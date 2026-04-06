@@ -103,6 +103,8 @@ func main() {
 	protectedMux := http.NewServeMux()
 
 	// User routes
+	protectedMux.HandleFunc("/api/users/search", userHandler.SearchUsers)
+	protectedMux.HandleFunc("/api/users/find", userHandler.FindUser)
 	protectedMux.HandleFunc("/api/users", userHandler.GetUsers)
 	protectedMux.HandleFunc("/api/users/", userHandler.GetUser)
 	protectedMux.HandleFunc("/api/me", userHandler.GetMe)

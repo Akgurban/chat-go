@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"fmt"
 
 	"chat-go/internal/models"
 )
@@ -142,6 +143,68 @@ func (r *MessageRepository) GetDirectMessages(userID1, userID2 int, limit, offse
 	// Reverse to get chronological order
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// GetDirectMessagesFiltered returns direct messages with optional filters (after message ID, unread only)
+func (r *MessageRepository) GetDirectMessagesFiltered(userID1, userID2 int, limit int, afterID int, unreadOnly bool) ([]models.DirectMessageWithUsers, error) {
+	query := `
+		SELECT dm.id, dm.sender_id, dm.receiver_id, dm.content, dm.message_type, dm.is_read, dm.created_at,
+			   COALESCE(s.username, 'Deleted User') as sender_username,
+			   COALESCE(r.username, 'Deleted User') as receiver_username
+		FROM direct_messages dm
+		LEFT JOIN users s ON dm.sender_id = s.id
+		LEFT JOIN users r ON dm.receiver_id = r.id
+		WHERE ((dm.sender_id = $1 AND dm.receiver_id = $2) OR (dm.sender_id = $2 AND dm.receiver_id = $1))
+		  AND dm.is_deleted = false`
+
+	args := []interface{}{userID1, userID2}
+	argIndex := 3
+
+	// Filter by after message ID
+	if afterID > 0 {
+		query += fmt.Sprintf(" AND dm.id > $%d", argIndex)
+		args = append(args, afterID)
+		argIndex++
+	}
+
+	// Filter unread messages only (messages sent TO userID1 that are unread)
+	if unreadOnly {
+		query += fmt.Sprintf(" AND dm.is_read = false AND dm.receiver_id = $%d", argIndex)
+		args = append(args, userID1)
+		argIndex++
+	}
+
+	query += " ORDER BY dm.created_at ASC"
+	query += fmt.Sprintf(" LIMIT $%d", argIndex)
+	args = append(args, limit)
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []models.DirectMessageWithUsers
+	for rows.Next() {
+		var msg models.DirectMessageWithUsers
+		err := rows.Scan(
+			&msg.ID,
+			&msg.SenderID,
+			&msg.ReceiverID,
+			&msg.Content,
+			&msg.MessageType,
+			&msg.IsRead,
+			&msg.CreatedAt,
+			&msg.SenderUsername,
+			&msg.ReceiverUsername,
+		)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, msg)
 	}
 
 	return messages, nil

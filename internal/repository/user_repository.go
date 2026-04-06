@@ -167,3 +167,83 @@ func (r *UserRepository) UsernameExists(username string) (bool, error) {
 	err := r.db.QueryRow(query, username).Scan(&exists)
 	return exists, err
 }
+
+// SearchUsers searches for users by email or username (partial match)
+func (r *UserRepository) SearchUsers(query string, limit int) ([]models.User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	searchQuery := `
+		SELECT id, username, email, password_hash, avatar_url, status, created_at, updated_at
+		FROM users 
+		WHERE LOWER(username) LIKE LOWER($1) OR LOWER(email) LIKE LOWER($1)
+		ORDER BY 
+			CASE 
+				WHEN LOWER(username) = LOWER($2) THEN 1
+				WHEN LOWER(email) = LOWER($2) THEN 2
+				WHEN LOWER(username) LIKE LOWER($2 || '%') THEN 3
+				WHEN LOWER(email) LIKE LOWER($2 || '%') THEN 4
+				ELSE 5
+			END,
+			username
+		LIMIT $3`
+
+	searchPattern := "%" + query + "%"
+	rows, err := r.db.Query(searchQuery, searchPattern, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.Email,
+			&user.PasswordHash,
+			&user.AvatarURL,
+			&user.Status,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+// GetByEmailOrUsername finds a user by exact email or username match
+func (r *UserRepository) GetByEmailOrUsername(identifier string) (*models.User, error) {
+	query := `
+		SELECT id, username, email, password_hash, avatar_url, status, created_at, updated_at
+		FROM users 
+		WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1)`
+
+	user := &models.User{}
+	err := r.db.QueryRow(query, identifier).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.AvatarURL,
+		&user.Status,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}

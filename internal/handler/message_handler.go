@@ -176,30 +176,50 @@ func (h *MessageHandler) GetDirectMessages(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get pagination params
+	// Get query params
 	limit := 50
-	offset := 0
-
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
 			limit = parsed
 		}
 	}
 
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
+	// Check for 'after' parameter (get messages after this ID)
+	afterID := 0
+	if a := r.URL.Query().Get("after"); a != "" {
+		if parsed, err := strconv.Atoi(a); err == nil && parsed > 0 {
+			afterID = parsed
 		}
 	}
 
-	messages, err := h.messageRepo.GetDirectMessages(userID, otherUserID, limit, offset)
+	// Check for 'unread_only' parameter
+	unreadOnly := r.URL.Query().Get("unread_only") == "true"
+
+	var messages []models.DirectMessageWithUsers
+
+	// Use filtered query if after or unread_only is specified
+	if afterID > 0 || unreadOnly {
+		messages, err = h.messageRepo.GetDirectMessagesFiltered(userID, otherUserID, limit, afterID, unreadOnly)
+	} else {
+		// Use standard pagination query
+		offset := 0
+		if o := r.URL.Query().Get("offset"); o != "" {
+			if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+				offset = parsed
+			}
+		}
+		messages, err = h.messageRepo.GetDirectMessages(userID, otherUserID, limit, offset)
+	}
+
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to get messages")
 		return
 	}
 
-	// Mark messages as read
-	h.messageRepo.MarkDirectMessagesAsRead(otherUserID, userID)
+	// Mark messages as read (only if not fetching unread_only, as that's likely a poll)
+	if !unreadOnly {
+		h.messageRepo.MarkDirectMessagesAsRead(otherUserID, userID)
+	}
 
 	if messages == nil {
 		messages = []models.DirectMessageWithUsers{}
