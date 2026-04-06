@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"chat-go/internal/cache"
 	"chat-go/internal/repository"
 	"chat-go/internal/service"
 	ws "chat-go/internal/websocket"
@@ -27,6 +30,7 @@ type WebSocketHandler struct {
 	authService *service.AuthService
 	userRepo    *repository.UserRepository
 	messageRepo *repository.MessageRepository
+	cache       *cache.Cache
 }
 
 func NewWebSocketHandler(
@@ -34,12 +38,14 @@ func NewWebSocketHandler(
 	authService *service.AuthService,
 	userRepo *repository.UserRepository,
 	messageRepo *repository.MessageRepository,
+	appCache *cache.Cache,
 ) *WebSocketHandler {
 	return &WebSocketHandler{
 		hub:         hub,
 		authService: authService,
 		userRepo:    userRepo,
 		messageRepo: messageRepo,
+		cache:       appCache,
 	}
 }
 
@@ -78,8 +84,17 @@ func (h *WebSocketHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	// Register client
 	h.hub.RegisterClient(client)
 
-	// Update user status to online
+	// Update user status to online in database
 	h.userRepo.UpdateStatus(claims.UserID, "online")
+
+	// Set user online in Redis cache (for cross-server presence)
+	if h.cache != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := h.cache.Presence.SetOnline(ctx, claims.UserID); err != nil {
+			log.Printf("Failed to set user online in Redis: %v", err)
+		}
+	}
 
 	// Start client goroutines
 	go client.WritePump()

@@ -10,13 +10,15 @@ http://localhost:8080
 
 ## API Reference
 
-| Documentation                         | Description                 |
-| ------------------------------------- | --------------------------- |
-| [Authentication](./authentication.md) | User registration and login |
-| [Users](./users.md)                   | User profiles and listing   |
-| [Rooms](./rooms.md)                   | Chat room management        |
-| [Messages](./messages.md)             | Room and direct messages    |
-| [WebSocket](./websocket.md)           | Real-time messaging         |
+| Documentation                         | Description                     |
+| ------------------------------------- | ------------------------------- |
+| [Authentication](./authentication.md) | User registration and login     |
+| [Users](./users.md)                   | User profiles and listing       |
+| [Rooms](./rooms.md)                   | Chat room management            |
+| [Messages](./messages.md)             | Room and direct messages        |
+| [Chats](./chats.md)                   | Combined chat list (DM + rooms) |
+| [Notifications](./notifications.md)   | Push & WebSocket notifications  |
+| [WebSocket](./websocket.md)           | Real-time messaging             |
 
 ## Quick Start
 

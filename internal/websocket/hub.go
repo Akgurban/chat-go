@@ -155,3 +155,43 @@ func (h *Hub) IsUserOnline(userID int) bool {
 func (h *Hub) RegisterClient(client *Client) {
 	h.register <- client
 }
+
+// SendToUser sends a message to a specific user (implements WebSocketNotifier interface)
+func (h *Hub) SendToUser(userID int, message []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if client, ok := h.userClients[userID]; ok {
+		select {
+		case client.send <- message:
+		default:
+			// Client buffer full, skip
+		}
+	}
+}
+
+// GetOnlineUsers returns a list of online user IDs
+func (h *Hub) GetOnlineUsers() []int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	userIDs := make([]int, 0, len(h.userClients))
+	for userID := range h.userClients {
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs
+}
+
+// GetRoomMembers returns online users in a specific room
+func (h *Hub) GetRoomOnlineMembers(roomID int) []int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var userIDs []int
+	if clients, ok := h.roomClients[roomID]; ok {
+		for client := range clients {
+			userIDs = append(userIDs, client.UserID)
+		}
+	}
+	return userIDs
+}

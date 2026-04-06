@@ -216,6 +216,166 @@ ws.send(
 
 ---
 
+### Edit Message
+
+Edit a previously sent message in a room.
+
+```json
+{
+  "type": "edit_message",
+  "payload": {
+    "message_id": 123,
+    "room_id": 1,
+    "content": "Updated message content"
+  }
+}
+```
+
+| Field      | Type    | Description                 |
+| ---------- | ------- | --------------------------- |
+| message_id | integer | Message ID to edit          |
+| room_id    | integer | Room containing the message |
+| content    | string  | New message content         |
+
+**Example:**
+
+```javascript
+ws.send(
+  JSON.stringify({
+    type: "edit_message",
+    payload: {
+      message_id: 123,
+      room_id: 1,
+      content: "Updated message",
+    },
+  }),
+);
+```
+
+---
+
+### Delete Message
+
+Delete a previously sent message in a room.
+
+```json
+{
+  "type": "delete_message",
+  "payload": {
+    "message_id": 123,
+    "room_id": 1
+  }
+}
+```
+
+| Field      | Type    | Description                 |
+| ---------- | ------- | --------------------------- |
+| message_id | integer | Message ID to delete        |
+| room_id    | integer | Room containing the message |
+
+**Example:**
+
+```javascript
+ws.send(
+  JSON.stringify({
+    type: "delete_message",
+    payload: {
+      message_id: 123,
+      room_id: 1,
+    },
+  }),
+);
+```
+
+---
+
+### Mark Messages as Read
+
+Mark messages as read in a room or DM conversation.
+
+```json
+{
+  "type": "mark_read",
+  "payload": {
+    "room_id": 1,
+    "message_id": 100
+  }
+}
+```
+
+For room messages:
+| Field | Type | Description |
+| ---------- | ------- | -------------------------------- |
+| room_id | integer | Room ID |
+| message_id | integer | Mark all messages up to this ID |
+
+For direct messages:
+
+```json
+{
+  "type": "mark_read",
+  "payload": {
+    "sender_id": 2
+  }
+}
+```
+
+| Field     | Type    | Description                         |
+| --------- | ------- | ----------------------------------- |
+| sender_id | integer | Mark all DMs from this user as read |
+
+**Example:**
+
+```javascript
+// Mark room messages as read
+ws.send(
+  JSON.stringify({
+    type: "mark_read",
+    payload: { room_id: 1, message_id: 100 },
+  }),
+);
+
+// Mark direct messages as read
+ws.send(
+  JSON.stringify({
+    type: "mark_read",
+    payload: { sender_id: 2 },
+  }),
+);
+```
+
+---
+
+### Typing Indicator (Direct Message)
+
+Notify a user that you are typing a direct message.
+
+```json
+{
+  "type": "typing_dm",
+  "payload": {
+    "receiver_id": 2
+  }
+}
+```
+
+| Field       | Type    | Description           |
+| ----------- | ------- | --------------------- |
+| receiver_id | integer | User you're typing to |
+
+**Example:**
+
+```javascript
+ws.send(
+  JSON.stringify({
+    type: "typing_dm",
+    payload: { receiver_id: 2 },
+  }),
+);
+```
+
+---
+
 ## Server → Client Messages
 
 ### New Message
@@ -232,6 +392,99 @@ Received when a new message is sent in a joined room.
     "sender_username": "jane",
     "content": "Hello!",
     "created_at": "2026-04-03T12:00:00Z"
+  }
+}
+```
+
+---
+
+### Message Edited
+
+Received when a message is edited in a joined room.
+
+```json
+{
+  "type": "message_edited",
+  "payload": {
+    "message_id": 123,
+    "room_id": 1,
+    "content": "Updated content",
+    "edited_at": "2026-04-03T12:05:00Z",
+    "edited_by": 2,
+    "editor_username": "jane"
+  }
+}
+```
+
+---
+
+### Message Deleted
+
+Received when a message is deleted in a joined room.
+
+```json
+{
+  "type": "message_deleted",
+  "payload": {
+    "message_id": 123,
+    "room_id": 1,
+    "deleted_by": 2,
+    "deleter_username": "jane"
+  }
+}
+```
+
+---
+
+### Messages Read Receipt
+
+Received when someone reads your direct messages.
+
+```json
+{
+  "type": "messages_read",
+  "payload": {
+    "reader_id": 2,
+    "reader_username": "jane",
+    "sender_id": 1
+  }
+}
+```
+
+---
+
+### Notification
+
+Received when you get a new notification (while connected).
+
+```json
+{
+  "type": "notification",
+  "payload": {
+    "id": 1,
+    "user_id": 1,
+    "type": "direct_message",
+    "title": "Message from Jane",
+    "body": "Hey, how are you?",
+    "data": "{\"sender_id\": 2, \"message_id\": 456}",
+    "is_read": false,
+    "created_at": "2026-04-03T12:00:00Z"
+  }
+}
+```
+
+---
+
+### User Typing (Direct Message)
+
+Received when another user is typing a direct message to you.
+
+```json
+{
+  "type": "user_typing_dm",
+  "payload": {
+    "user_id": 2,
+    "username": "jane"
   }
 }
 ```

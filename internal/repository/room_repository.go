@@ -184,3 +184,23 @@ func (r *RoomRepository) Delete(roomID int) error {
 	_, err := r.db.Exec(query, roomID)
 	return err
 }
+
+func (r *RoomRepository) GetMemberIDs(roomID int) ([]int, error) {
+	query := `SELECT user_id FROM room_members WHERE room_id = $1`
+
+	rows, err := r.db.Query(query, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var userIDs []int
+	for rows.Next() {
+		var userID int
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs, nil
+}

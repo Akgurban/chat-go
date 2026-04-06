@@ -335,6 +335,307 @@ curl -X POST http://localhost:8080/api/dm/2 \
 | content           | string          | Message content               |
 | message_type      | string          | `text`, `image`, `file`       |
 | is_read           | boolean         | Whether message has been read |
+| is_edited         | boolean         | Whether message was edited    |
+| edited_at         | string \| null  | ISO 8601 timestamp of edit    |
+| is_deleted        | boolean         | Whether message was deleted   |
 | created_at        | string          | ISO 8601 timestamp            |
+| read_at           | string \| null  | ISO 8601 timestamp when read  |
 | sender_username   | string          | Sender's username             |
 | receiver_username | string          | Receiver's username           |
+
+---
+
+## Edit Room Message
+
+Edit a previously sent room message. Only the sender can edit their own messages.
+
+### Request
+
+```
+PUT /api/messages/{id}
+```
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | integer | Message ID |
+
+**Headers:**
+| Header | Value |
+|--------|-------|
+| Authorization | Bearer \<token\> |
+| Content-Type | application/json |
+
+**Body:**
+
+```json
+{
+  "content": "Updated message content"
+}
+```
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "id": 1,
+  "room_id": 1,
+  "sender_id": 1,
+  "content": "Updated message content",
+  "message_type": "text",
+  "is_edited": true,
+  "edited_at": "2026-04-04T12:30:00Z",
+  "is_deleted": false,
+  "created_at": "2026-04-04T12:00:00Z",
+  "updated_at": "2026-04-04T12:30:00Z"
+}
+```
+
+**Errors:**
+| Status | Response |
+|--------|----------|
+| 400 | `{"error": "Invalid message ID"}` |
+| 400 | `{"error": "Message content is required"}` |
+| 404 | `{"error": "Message not found or you don't have permission to edit it"}` |
+
+### Example
+
+```bash
+curl -X PUT http://localhost:8080/api/messages/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Updated message"}'
+```
+
+---
+
+## Delete Room Message
+
+Delete a previously sent room message (soft delete). Only the sender can delete their own messages.
+
+### Request
+
+```
+DELETE /api/messages/{id}
+```
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | integer | Message ID |
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "message": "Message deleted"
+}
+```
+
+**Errors:**
+| Status | Response |
+|--------|----------|
+| 404 | `{"error": "Message not found or you don't have permission to delete it"}` |
+
+### Example
+
+```bash
+curl -X DELETE http://localhost:8080/api/messages/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+---
+
+## Edit Direct Message
+
+Edit a previously sent direct message. Only the sender can edit their own messages.
+
+### Request
+
+```
+PUT /api/dm/messages/{id}
+```
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | integer | Message ID |
+
+**Body:**
+
+```json
+{
+  "content": "Updated message content"
+}
+```
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "id": 1,
+  "sender_id": 1,
+  "receiver_id": 2,
+  "content": "Updated message content",
+  "message_type": "text",
+  "is_read": true,
+  "is_edited": true,
+  "edited_at": "2026-04-04T12:30:00Z",
+  "is_deleted": false,
+  "created_at": "2026-04-04T12:00:00Z",
+  "read_at": "2026-04-04T12:15:00Z"
+}
+```
+
+### Example
+
+```bash
+curl -X PUT http://localhost:8080/api/dm/messages/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Updated DM"}'
+```
+
+---
+
+## Delete Direct Message
+
+Delete a previously sent direct message (soft delete).
+
+### Request
+
+```
+DELETE /api/dm/messages/{id}
+```
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "message": "Message deleted"
+}
+```
+
+### Example
+
+```bash
+curl -X DELETE http://localhost:8080/api/dm/messages/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+---
+
+## Mark Room Messages as Read
+
+Mark messages in a room as read up to a specific message.
+
+### Request
+
+```
+POST /api/rooms/{id}/messages/read
+```
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | integer | Room ID |
+
+**Body (optional):**
+
+```json
+{
+  "up_to_message_id": 100
+}
+```
+
+If `up_to_message_id` is not provided, all messages will be marked as read.
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "message": "Messages marked as read"
+}
+```
+
+### Example
+
+```bash
+curl -X POST http://localhost:8080/api/rooms/1/messages/read \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"up_to_message_id": 100}'
+```
+
+---
+
+## Get Unread Room Messages Count
+
+Get the count of unread messages in a specific room.
+
+### Request
+
+```
+GET /api/rooms/{id}/messages/unread
+```
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | integer | Room ID |
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "unread_count": 5
+}
+```
+
+### Example
+
+```bash
+curl -X GET http://localhost:8080/api/rooms/1/messages/unread \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+---
+
+## Get Unread Direct Messages Count
+
+Get the total count of unread direct messages.
+
+### Request
+
+```
+GET /api/dm/unread
+```
+
+### Response
+
+**Success (200 OK):**
+
+```json
+{
+  "unread_count": 3
+}
+```
+
+### Example
+
+```bash
+curl -X GET http://localhost:8080/api/dm/unread \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```

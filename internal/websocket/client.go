@@ -61,6 +61,23 @@ type DirectMessagePayloadIncoming struct {
 	Content    string `json:"content"`
 }
 
+type EditMessagePayload struct {
+	MessageID int    `json:"message_id"`
+	RoomID    int    `json:"room_id,omitempty"`
+	Content   string `json:"content"`
+}
+
+type MarkReadPayload struct {
+	RoomID    int `json:"room_id,omitempty"`
+	MessageID int `json:"message_id,omitempty"`
+	SenderID  int `json:"sender_id,omitempty"` // For DMs
+}
+
+type DeleteMessagePayload struct {
+	MessageID int `json:"message_id"`
+	RoomID    int `json:"room_id,omitempty"`
+}
+
 func (c *Client) ReadPump(messageRepo *repository.MessageRepository) {
 	defer func() {
 		c.Hub.unregister <- c
@@ -204,7 +221,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 		data, _ := json.Marshal(dmMsg)
 		c.Hub.SendDirectMessage(payload.ReceiverID, data)
 
-		// Also send back to sender for confirmation
+		// Send same message back to sender so it appears in their chat
 		c.send <- data
 
 	case "typing":
@@ -223,6 +240,113 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 		}
 		data, _ := json.Marshal(typingMsg)
 		c.Hub.BroadcastToRoom(payload.RoomID, data)
+
+	case "edit_message":
+		var payload EditMessagePayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
+		}
+
+		// Check if user is in the room
+		if payload.RoomID > 0 && !c.Rooms[payload.RoomID] {
+			return
+		}
+
+		// Edit message in database
+		editedMsg, err := messageRepo.EditMessage(payload.MessageID, c.UserID, payload.Content)
+		if err != nil {
+			log.Printf("Failed to edit message: %v", err)
+			return
+		}
+
+		// Broadcast the edit to the room
+		broadcastMsg := models.WSMessage{
+			Type: "message_edited",
+			Payload: map[string]interface{}{
+				"message_id":      editedMsg.ID,
+				"room_id":         editedMsg.RoomID,
+				"content":         editedMsg.Content,
+				"edited_at":       editedMsg.EditedAt,
+				"edited_by":       c.UserID,
+				"editor_username": c.Username,
+			},
+		}
+		data, _ := json.Marshal(broadcastMsg)
+		c.Hub.BroadcastToRoom(editedMsg.RoomID, data)
+
+	case "delete_message":
+		var payload DeleteMessagePayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
+		}
+
+		// Check if user is in the room
+		if payload.RoomID > 0 && !c.Rooms[payload.RoomID] {
+			return
+		}
+
+		// Delete message in database
+		if err := messageRepo.DeleteMessage(payload.MessageID, c.UserID); err != nil {
+			log.Printf("Failed to delete message: %v", err)
+			return
+		}
+
+		// Broadcast the deletion to the room
+		broadcastMsg := models.WSMessage{
+			Type: "message_deleted",
+			Payload: map[string]interface{}{
+				"message_id":       payload.MessageID,
+				"room_id":          payload.RoomID,
+				"deleted_by":       c.UserID,
+				"deleter_username": c.Username,
+			},
+		}
+		data, _ := json.Marshal(broadcastMsg)
+		c.Hub.BroadcastToRoom(payload.RoomID, data)
+
+	case "mark_read":
+		var payload MarkReadPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
+		}
+
+		if payload.RoomID > 0 {
+			// Mark room messages as read
+			if payload.MessageID > 0 {
+				messageRepo.MarkRoomMessagesAsRead(c.UserID, payload.RoomID, payload.MessageID)
+			}
+		} else if payload.SenderID > 0 {
+			// Mark direct messages as read
+			messageRepo.MarkDirectMessagesAsRead(payload.SenderID, c.UserID)
+
+			// Notify sender that messages were read
+			readReceipt := models.WSMessage{
+				Type: "messages_read",
+				Payload: map[string]interface{}{
+					"reader_id":       c.UserID,
+					"reader_username": c.Username,
+					"sender_id":       payload.SenderID,
+				},
+			}
+			data, _ := json.Marshal(readReceipt)
+			c.Hub.SendDirectMessage(payload.SenderID, data)
+		}
+
+	case "typing_dm":
+		var payload DirectMessagePayloadIncoming
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
+		}
+
+		typingMsg := models.WSMessage{
+			Type: "user_typing_dm",
+			Payload: map[string]interface{}{
+				"user_id":  c.UserID,
+				"username": c.Username,
+			},
+		}
+		data, _ := json.Marshal(typingMsg)
+		c.Hub.SendDirectMessage(payload.ReceiverID, data)
 	}
 }
 

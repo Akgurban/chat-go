@@ -1,6 +1,15 @@
 # Chat-Go - Real-time Chat Application Backend
 
-A real-time chat application backend built with Go, PostgreSQL (plain SQL), and WebSockets.
+A real-time chat application backend bui### 3. Configure Environment
+
+```bash
+# Copy example env file
+cp .env.example .env
+
+# Edit .env with your database and Redis credentials
+```
+
+### 4. Install Dependencies, PostgreSQL (plain SQL), WebSockets, and Redis.
 
 ## Features
 
@@ -9,6 +18,13 @@ A real-time chat application backend built with Go, PostgreSQL (plain SQL), and 
 - 🏠 **Chat Rooms**: Create and join public/private rooms
 - 📨 **Direct Messages**: One-on-one private messaging
 - 🔒 **Plain SQL**: No ORM, using raw PostgreSQL queries
+- 📦 **Redis Caching**: Optional Redis support for:
+  - User presence/online status
+  - Unread message counts
+  - Rate limiting
+  - Typing indicators
+  - Pub/Sub for multi-server support
+  - Session management
 
 ## Project Structure
 
@@ -28,11 +44,20 @@ chat-go/
 │       ├── messages.md          # Messages endpoints docs
 │       └── websocket.md         # WebSocket docs
 ├── internal/
+│   ├── cache/                   # Redis caching layer
+│   │   ├── cache.go             # Combined cache manager
+│   │   ├── presence.go          # User online status
+│   │   ├── pubsub.go            # Pub/Sub messaging
+│   │   ├── ratelimit.go         # Rate limiting
+│   │   ├── redis.go             # Redis client
+│   │   ├── session.go           # Session management
+│   │   ├── typing.go            # Typing indicators
+│   │   └── unread.go            # Unread counts
 │   ├── database/
 │   │   ├── db.go                # Database connection
 │   │   └── migrations.go        # Migration runner
 │   ├── handler/                 # HTTP handlers
-│   ├── middleware/              # Auth, CORS, Logging
+│   ├── middleware/              # Auth, CORS, Logging, Rate Limiting
 │   ├── models/                  # Data models
 │   ├── repository/              # Database operations (plain SQL)
 │   ├── service/                 # Business logic
@@ -48,6 +73,7 @@ chat-go/
 
 - Go 1.21+
 - PostgreSQL 13+
+- Redis 6+ (optional, for caching features)
 
 ## Getting Started
 
@@ -58,7 +84,18 @@ chat-go/
 psql -U postgres -c "CREATE DATABASE chat_go;"
 ```
 
-### 2. Configure Environment
+### 2. Setup Redis (Optional)
+
+```bash
+# Using Docker
+docker run -d --name redis -p 6379:6379 redis:alpine
+
+# Or install locally
+# macOS: brew install redis && brew services start redis
+# Ubuntu: sudo apt install redis-server && sudo systemctl start redis
+```
+
+### 3. Configure Environment
 
 ```bash
 # Copy example env file
@@ -67,13 +104,13 @@ cp .env.example .env
 # Edit .env with your database credentials
 ```
 
-### 3. Install Dependencies
+### 4. Install Dependencies
 
 ```bash
 go mod download
 ```
 
-### 4. Run the Server
+### 5. Run the Server
 
 ```bash
 go run cmd/server/main.go
