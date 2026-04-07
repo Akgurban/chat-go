@@ -7,8 +7,6 @@ const (
 	NotificationTypeMessage       = "message"
 	NotificationTypeDirectMessage = "direct_message"
 	NotificationTypeMention       = "mention"
-	NotificationTypeRoomInvite    = "room_invite"
-	NotificationTypeRoomJoin      = "room_join"
 	NotificationTypeSystem        = "system"
 )
 
@@ -22,7 +20,7 @@ type Notification struct {
 	Data        string     `json:"data,omitempty"` // JSON string for additional data
 	IsRead      bool       `json:"is_read"`
 	IsPushed    bool       `json:"is_pushed"`              // Whether push notification was sent
-	ReferenceID *int       `json:"reference_id,omitempty"` // ID of related message/room
+	ReferenceID *int       `json:"reference_id,omitempty"` // ID of related message
 	CreatedAt   time.Time  `json:"created_at"`
 	ReadAt      *time.Time `json:"read_at,omitempty"`
 }
@@ -47,7 +45,6 @@ type NotificationPreferences struct {
 	PushNotifications   bool      `json:"push_notifications"`
 	DirectMessageNotify bool      `json:"direct_message_notify"`
 	MentionNotify       bool      `json:"mention_notify"`
-	RoomMessageNotify   bool      `json:"room_message_notify"`
 	MuteAll             bool      `json:"mute_all"`
 	QuietHoursEnabled   bool      `json:"quiet_hours_enabled"`
 	QuietHoursStart     *string   `json:"quiet_hours_start,omitempty"` // Time format: "HH:MM"
@@ -86,7 +83,6 @@ type NotificationPreferencesRequest struct {
 	PushNotifications   *bool   `json:"push_notifications,omitempty"`
 	DirectMessageNotify *bool   `json:"direct_message_notify,omitempty"`
 	MentionNotify       *bool   `json:"mention_notify,omitempty"`
-	RoomMessageNotify   *bool   `json:"room_message_notify,omitempty"`
 	MuteAll             *bool   `json:"mute_all,omitempty"`
 	QuietHoursEnabled   *bool   `json:"quiet_hours_enabled,omitempty"`
 	QuietHoursStart     *string `json:"quiet_hours_start,omitempty"`
@@ -95,17 +91,7 @@ type NotificationPreferencesRequest struct {
 
 // UnreadCount represents unread message counts
 type UnreadCount struct {
-	TotalUnread         int         `json:"total_unread"`
-	DirectMessageUnread int         `json:"direct_message_unread"`
-	RoomUnread          map[int]int `json:"room_unread"` // room_id -> count
-	NotificationUnread  int         `json:"notification_unread"`
-}
-
-// MessageReadStatus tracks which messages a user has read
-type MessageReadStatus struct {
-	ID        int       `json:"id"`
-	UserID    int       `json:"user_id"`
-	MessageID int       `json:"message_id"`
-	RoomID    int       `json:"room_id"`
-	ReadAt    time.Time `json:"read_at"`
+	TotalUnread         int `json:"total_unread"`
+	DirectMessageUnread int `json:"direct_message_unread"`
+	NotificationUnread  int `json:"notification_unread"`
 }

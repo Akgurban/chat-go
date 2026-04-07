@@ -23,7 +23,6 @@ type Client struct {
 	Conn     *websocket.Conn
 	UserID   int
 	Username string
-	Rooms    map[int]bool
 	send     chan []byte
 }
 
@@ -33,7 +32,6 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID int, username string) *Cli
 		Conn:     conn,
 		UserID:   userID,
 		Username: username,
-		Rooms:    make(map[int]bool),
 		send:     make(chan []byte, 256),
 	}
 }
@@ -43,39 +41,24 @@ type IncomingMessage struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-type JoinRoomPayload struct {
-	RoomID int `json:"room_id"`
-}
-
-type LeaveRoomPayload struct {
-	RoomID int `json:"room_id"`
-}
-
-type ChatMessagePayload struct {
-	RoomID  int    `json:"room_id"`
-	Content string `json:"content"`
-}
-
 type DirectMessagePayloadIncoming struct {
 	ReceiverID int    `json:"receiver_id"`
 	Content    string `json:"content"`
 }
 
-type EditMessagePayload struct {
-	MessageID int    `json:"message_id"`
-	RoomID    int    `json:"room_id,omitempty"`
-	Content   string `json:"content"`
+type EditDirectMessagePayload struct {
+	MessageID  int    `json:"message_id"`
+	ReceiverID int    `json:"receiver_id"`
+	Content    string `json:"content"`
+}
+
+type DeleteDirectMessagePayload struct {
+	MessageID  int `json:"message_id"`
+	ReceiverID int `json:"receiver_id"`
 }
 
 type MarkReadPayload struct {
-	RoomID    int `json:"room_id,omitempty"`
-	MessageID int `json:"message_id,omitempty"`
-	SenderID  int `json:"sender_id,omitempty"` // For DMs
-}
-
-type DeleteMessagePayload struct {
-	MessageID int `json:"message_id"`
-	RoomID    int `json:"room_id,omitempty"`
+	SenderID int `json:"sender_id"` // For DMs - who sent the messages
 }
 
 func (c *Client) ReadPump(messageRepo *repository.MessageRepository) {
@@ -112,82 +95,6 @@ func (c *Client) ReadPump(messageRepo *repository.MessageRepository) {
 
 func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.MessageRepository) {
 	switch msg.Type {
-	case "join_room":
-		var payload JoinRoomPayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			return
-		}
-		c.Hub.JoinRoom(c, payload.RoomID)
-
-		// Notify room that user joined
-		notification := models.WSMessage{
-			Type: "user_joined",
-			Payload: map[string]interface{}{
-				"room_id":  payload.RoomID,
-				"user_id":  c.UserID,
-				"username": c.Username,
-			},
-		}
-		data, _ := json.Marshal(notification)
-		c.Hub.BroadcastToRoom(payload.RoomID, data)
-
-	case "leave_room":
-		var payload LeaveRoomPayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			return
-		}
-		c.Hub.LeaveRoom(c, payload.RoomID)
-
-		// Notify room that user left
-		notification := models.WSMessage{
-			Type: "user_left",
-			Payload: map[string]interface{}{
-				"room_id":  payload.RoomID,
-				"user_id":  c.UserID,
-				"username": c.Username,
-			},
-		}
-		data, _ := json.Marshal(notification)
-		c.Hub.BroadcastToRoom(payload.RoomID, data)
-
-	case "chat_message":
-		var payload ChatMessagePayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			return
-		}
-
-		// Check if user is in the room
-		if !c.Rooms[payload.RoomID] {
-			return
-		}
-
-		// Save message to database
-		dbMessage := &models.Message{
-			RoomID:      payload.RoomID,
-			SenderID:    &c.UserID,
-			Content:     payload.Content,
-			MessageType: "text",
-		}
-		if err := messageRepo.CreateMessage(dbMessage); err != nil {
-			log.Printf("Failed to save message: %v", err)
-			return
-		}
-
-		// Broadcast to room
-		broadcastMsg := models.WSMessage{
-			Type: "new_message",
-			Payload: map[string]interface{}{
-				"id":              dbMessage.ID,
-				"room_id":         dbMessage.RoomID,
-				"sender_id":       c.UserID,
-				"sender_username": c.Username,
-				"content":         dbMessage.Content,
-				"created_at":      dbMessage.CreatedAt,
-			},
-		}
-		data, _ := json.Marshal(broadcastMsg)
-		c.Hub.BroadcastToRoom(payload.RoomID, data)
-
 	case "direct_message":
 		var payload DirectMessagePayloadIncoming
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -224,85 +131,66 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 		// Send same message back to sender so it appears in their chat
 		c.send <- data
 
-	case "typing":
-		var payload ChatMessagePayload
+	case "edit_direct_message":
+		var payload EditDirectMessagePayload
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			return
-		}
-
-		typingMsg := models.WSMessage{
-			Type: "user_typing",
-			Payload: map[string]interface{}{
-				"room_id":  payload.RoomID,
-				"user_id":  c.UserID,
-				"username": c.Username,
-			},
-		}
-		data, _ := json.Marshal(typingMsg)
-		c.Hub.BroadcastToRoom(payload.RoomID, data)
-
-	case "edit_message":
-		var payload EditMessagePayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			return
-		}
-
-		// Check if user is in the room
-		if payload.RoomID > 0 && !c.Rooms[payload.RoomID] {
 			return
 		}
 
 		// Edit message in database
-		editedMsg, err := messageRepo.EditMessage(payload.MessageID, c.UserID, payload.Content)
+		editedMsg, err := messageRepo.EditDirectMessage(payload.MessageID, c.UserID, payload.Content)
 		if err != nil {
-			log.Printf("Failed to edit message: %v", err)
+			log.Printf("Failed to edit direct message: %v", err)
 			return
 		}
 
-		// Broadcast the edit to the room
-		broadcastMsg := models.WSMessage{
-			Type: "message_edited",
+		// Send edit notification to receiver
+		editNotif := models.WSMessage{
+			Type: "direct_message_edited",
 			Payload: map[string]interface{}{
 				"message_id":      editedMsg.ID,
-				"room_id":         editedMsg.RoomID,
+				"sender_id":       c.UserID,
+				"receiver_id":     payload.ReceiverID,
 				"content":         editedMsg.Content,
 				"edited_at":       editedMsg.EditedAt,
 				"edited_by":       c.UserID,
 				"editor_username": c.Username,
 			},
 		}
-		data, _ := json.Marshal(broadcastMsg)
-		c.Hub.BroadcastToRoom(editedMsg.RoomID, data)
+		data, _ := json.Marshal(editNotif)
+		c.Hub.SendDirectMessage(payload.ReceiverID, data)
 
-	case "delete_message":
-		var payload DeleteMessagePayload
+		// Send same notification back to sender
+		c.send <- data
+
+	case "delete_direct_message":
+		var payload DeleteDirectMessagePayload
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			return
 		}
 
-		// Check if user is in the room
-		if payload.RoomID > 0 && !c.Rooms[payload.RoomID] {
-			return
-		}
-
 		// Delete message in database
-		if err := messageRepo.DeleteMessage(payload.MessageID, c.UserID); err != nil {
-			log.Printf("Failed to delete message: %v", err)
+		if err := messageRepo.DeleteDirectMessage(payload.MessageID, c.UserID); err != nil {
+			log.Printf("Failed to delete direct message: %v", err)
 			return
 		}
 
-		// Broadcast the deletion to the room
-		broadcastMsg := models.WSMessage{
-			Type: "message_deleted",
+		// Send delete notification to receiver
+		deleteNotif := models.WSMessage{
+			Type: "direct_message_deleted",
 			Payload: map[string]interface{}{
 				"message_id":       payload.MessageID,
-				"room_id":          payload.RoomID,
+				"sender_id":        c.UserID,
+				"receiver_id":      payload.ReceiverID,
 				"deleted_by":       c.UserID,
 				"deleter_username": c.Username,
 			},
 		}
-		data, _ := json.Marshal(broadcastMsg)
-		c.Hub.BroadcastToRoom(payload.RoomID, data)
+		data, _ := json.Marshal(deleteNotif)
+		c.Hub.SendDirectMessage(payload.ReceiverID, data)
+
+		// Send same notification back to sender
+		c.send <- data
 
 	case "mark_read":
 		var payload MarkReadPayload
@@ -310,12 +198,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			return
 		}
 
-		if payload.RoomID > 0 {
-			// Mark room messages as read
-			if payload.MessageID > 0 {
-				messageRepo.MarkRoomMessagesAsRead(c.UserID, payload.RoomID, payload.MessageID)
-			}
-		} else if payload.SenderID > 0 {
+		if payload.SenderID > 0 {
 			// Mark direct messages as read
 			messageRepo.MarkDirectMessagesAsRead(payload.SenderID, c.UserID)
 

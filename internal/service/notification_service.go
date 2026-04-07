@@ -49,58 +49,6 @@ func NewNotificationService(
 	}
 }
 
-// NotifyNewMessage sends notification for a new room message
-func (s *NotificationService) NotifyNewMessage(
-	senderID int,
-	senderUsername string,
-	roomID int,
-	roomName string,
-	messageID int,
-	messageContent string,
-	memberIDs []int,
-) error {
-	// Don't notify the sender
-	recipientIDs := filterOutUser(memberIDs, senderID)
-	if len(recipientIDs) == 0 {
-		return nil
-	}
-
-	title := fmt.Sprintf("New message in %s", roomName)
-	body := fmt.Sprintf("%s: %s", senderUsername, truncateString(messageContent, 100))
-	data := repository.ToJSONString(map[string]interface{}{
-		"room_id":    roomID,
-		"message_id": messageID,
-		"sender_id":  senderID,
-	})
-
-	// Create notifications for all recipients
-	for _, userID := range recipientIDs {
-		notification := &models.Notification{
-			UserID:      userID,
-			Type:        models.NotificationTypeMessage,
-			Title:       title,
-			Body:        body,
-			Data:        data,
-			ReferenceID: &messageID,
-		}
-
-		if err := s.notifRepo.CreateNotification(notification); err != nil {
-			log.Printf("Failed to create notification for user %d: %v", userID, err)
-			continue
-		}
-
-		// Send via WebSocket if user is online
-		s.sendWSNotification(userID, notification)
-
-		// Send push notification if user is offline
-		if !s.wsNotifier.IsUserOnline(userID) {
-			go s.sendPushNotification(userID, notification)
-		}
-	}
-
-	return nil
-}
-
 // NotifyDirectMessage sends notification for a direct message
 func (s *NotificationService) NotifyDirectMessage(
 	senderID int,
@@ -146,15 +94,12 @@ func (s *NotificationService) NotifyMention(
 	senderID int,
 	senderUsername string,
 	mentionedUserID int,
-	roomID int,
-	roomName string,
 	messageID int,
 	messageContent string,
 ) error {
-	title := fmt.Sprintf("%s mentioned you in %s", senderUsername, roomName)
+	title := fmt.Sprintf("%s mentioned you", senderUsername)
 	body := truncateString(messageContent, 100)
 	data := repository.ToJSONString(map[string]interface{}{
-		"room_id":    roomID,
 		"message_id": messageID,
 		"sender_id":  senderID,
 	})
@@ -178,45 +123,6 @@ func (s *NotificationService) NotifyMention(
 	// Send push notification if user is offline
 	if !s.wsNotifier.IsUserOnline(mentionedUserID) {
 		go s.sendPushNotification(mentionedUserID, notification)
-	}
-
-	return nil
-}
-
-// NotifyRoomInvite sends notification for room invite
-func (s *NotificationService) NotifyRoomInvite(
-	inviterID int,
-	inviterUsername string,
-	invitedUserID int,
-	roomID int,
-	roomName string,
-) error {
-	title := "Room Invitation"
-	body := fmt.Sprintf("%s invited you to join %s", inviterUsername, roomName)
-	data := repository.ToJSONString(map[string]interface{}{
-		"room_id":    roomID,
-		"inviter_id": inviterID,
-	})
-
-	notification := &models.Notification{
-		UserID:      invitedUserID,
-		Type:        models.NotificationTypeRoomInvite,
-		Title:       title,
-		Body:        body,
-		Data:        data,
-		ReferenceID: &roomID,
-	}
-
-	if err := s.notifRepo.CreateNotification(notification); err != nil {
-		return err
-	}
-
-	// Send via WebSocket
-	s.sendWSNotification(invitedUserID, notification)
-
-	// Send push notification if user is offline
-	if !s.wsNotifier.IsUserOnline(invitedUserID) {
-		go s.sendPushNotification(invitedUserID, notification)
 	}
 
 	return nil
@@ -285,10 +191,6 @@ func (s *NotificationService) sendPushNotification(userID int, notification *mod
 		}
 	case models.NotificationTypeMention:
 		if !prefs.MentionNotify {
-			return
-		}
-	case models.NotificationTypeMessage:
-		if !prefs.RoomMessageNotify {
 			return
 		}
 	}
@@ -420,16 +322,6 @@ func (s *NotificationService) UpdatePreferences(userID int, req *models.Notifica
 }
 
 // Helper functions
-
-func filterOutUser(userIDs []int, excludeID int) []int {
-	result := make([]int, 0, len(userIDs))
-	for _, id := range userIDs {
-		if id != excludeID {
-			result = append(result, id)
-		}
-	}
-	return result
-}
 
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {

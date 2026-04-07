@@ -11,7 +11,6 @@ import (
 
 const (
 	// Channel patterns for pub/sub
-	channelRoom   = "chat:room:%d"
 	channelDirect = "chat:direct:%d:%d"
 	channelUser   = "user:%d:notifications"
 )
@@ -29,8 +28,8 @@ func NewPubSubManager(redisClient *RedisClient) *PubSubManager {
 // MessageEvent represents a message published through Redis
 type MessageEvent struct {
 	Type       string          `json:"type"`                  // "new_message", "edit_message", "delete_message", "typing"
-	ChatType   string          `json:"chat_type"`             // "room" or "direct"
-	ChatID     int             `json:"chat_id"`               // room_id or conversation partner user_id
+	ChatType   string          `json:"chat_type"`             // "direct"
+	ChatID     int             `json:"chat_id"`               // conversation partner user_id
 	SenderID   int             `json:"sender_id"`             // Who sent/triggered the event
 	ReceiverID int             `json:"receiver_id,omitempty"` // For direct messages
 	Data       json.RawMessage `json:"data"`                  // Event-specific data
@@ -48,16 +47,6 @@ type NotificationEvent struct {
 	UserID  int             `json:"user_id"`
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
-}
-
-// PublishRoomMessage publishes a message event to a room channel
-func (p *PubSubManager) PublishRoomMessage(ctx context.Context, roomID int, event MessageEvent) error {
-	channel := fmt.Sprintf(channelRoom, roomID)
-	data, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-	return p.client.Publish(ctx, channel, data).Err()
 }
 
 // PublishDirectMessage publishes a message event to a direct message channel
@@ -96,12 +85,6 @@ func (p *PubSubManager) PublishPresenceChange(ctx context.Context, event Presenc
 
 // MessageHandler is a function that handles received messages
 type MessageHandler func(channel string, payload []byte)
-
-// SubscribeToRoom subscribes to a room's message channel
-func (p *PubSubManager) SubscribeToRoom(ctx context.Context, roomID int, handler MessageHandler) {
-	channel := fmt.Sprintf(channelRoom, roomID)
-	p.subscribe(ctx, channel, handler)
-}
 
 // SubscribeToDirectMessages subscribes to a direct message channel between two users
 func (p *PubSubManager) SubscribeToDirectMessages(ctx context.Context, userID1, userID2 int, handler MessageHandler) {

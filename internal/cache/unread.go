@@ -35,7 +35,7 @@ func (u *UnreadCache) IncrementUnread(ctx context.Context, userID int, chatType 
 	return u.client.Incr(ctx, key).Err()
 }
 
-// IncrementUnreadForUsers increases unread count for multiple users (e.g., all room members)
+// IncrementUnreadForUsers increases unread count for multiple users
 func (u *UnreadCache) IncrementUnreadForUsers(ctx context.Context, userIDs []int, chatType string, chatID int, excludeUserID int) error {
 	if len(userIDs) == 0 {
 		return nil
@@ -114,7 +114,6 @@ func (u *UnreadCache) GetAllUnreadCounts(ctx context.Context, userID int) (map[s
 
 	// Result: map[chatType]map[chatID]count
 	result := map[string]map[int]int64{
-		"room":   make(map[int]int64),
 		"direct": make(map[int]int64),
 	}
 
