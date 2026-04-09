@@ -88,16 +88,18 @@ REDIS_DB=0
 
 ## API Endpoints Summary
 
-| Method | Endpoint             | Description                      |
-| ------ | -------------------- | -------------------------------- |
-| POST   | `/api/auth/register` | User registration                |
-| POST   | `/api/auth/login`    | User login                       |
-| GET    | `/api/users`         | List users                       |
-| GET    | `/api/rooms`         | List rooms                       |
-| POST   | `/api/rooms`         | Create room                      |
-| GET    | `/api/chats`         | Get all chats with unread counts |
-| GET    | `/api/dm/{userID}`   | Get direct messages              |
-| WS     | `/ws?token=JWT`      | WebSocket connection             |
+| Method | Endpoint             | Description                          |
+| ------ | -------------------- | ------------------------------------ |
+| POST   | `/api/auth/register` | User registration                    |
+| POST   | `/api/auth/login`    | User login                           |
+| GET    | `/api/users`         | List users                           |
+| GET    | `/api/users/search`  | Search users by email or username    |
+| GET    | `/api/users/find`    | Find user by exact email or username |
+| GET    | `/api/rooms`         | List rooms                           |
+| POST   | `/api/rooms`         | Create room                          |
+| GET    | `/api/chats`         | Get all chats with unread counts     |
+| GET    | `/api/dm/{userID}`   | Get direct messages                  |
+| WS     | `/ws?token=JWT`      | WebSocket connection                 |
 
 ## WebSocket Message Types
 

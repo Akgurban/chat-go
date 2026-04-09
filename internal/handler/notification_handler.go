@@ -81,7 +81,7 @@ func (h *NotificationHandler) GetUnreadCount(w http.ResponseWriter, r *http.Requ
 	respondWithJSON(w, http.StatusOK, map[string]int{"count": count})
 }
 
-// GetUnreadCounts returns all unread counts (notifications, DMs, room messages)
+// GetUnreadCounts returns all unread counts (notifications, DMs)
 func (h *NotificationHandler) GetUnreadCounts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

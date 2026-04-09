@@ -58,7 +58,6 @@ func main() {
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
-	roomRepo := repository.NewRoomRepository(db)
 	messageRepo := repository.NewMessageRepository(db)
 	notifRepo := repository.NewNotificationRepository(db)
 
@@ -84,8 +83,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userRepo)
-	roomHandler := handler.NewRoomHandler(roomRepo)
-	messageHandler := handler.NewMessageHandler(messageRepo, roomRepo, appCache)
+	messageHandler := handler.NewMessageHandler(messageRepo, appCache)
 	notifHandler := handler.NewNotificationHandler(notifService)
 	wsHandler := handler.NewWebSocketHandler(hub, authService, userRepo, messageRepo, appCache)
 
@@ -103,57 +101,11 @@ func main() {
 	protectedMux := http.NewServeMux()
 
 	// User routes
+	protectedMux.HandleFunc("/api/users/search", userHandler.SearchUsers)
+	protectedMux.HandleFunc("/api/users/find", userHandler.FindUser)
 	protectedMux.HandleFunc("/api/users", userHandler.GetUsers)
 	protectedMux.HandleFunc("/api/users/", userHandler.GetUser)
 	protectedMux.HandleFunc("/api/me", userHandler.GetMe)
-
-	// Room routes
-	protectedMux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			roomHandler.GetRooms(w, r)
-		case http.MethodPost:
-			roomHandler.CreateRoom(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	protectedMux.HandleFunc("/api/rooms/my", roomHandler.GetMyRooms)
-	protectedMux.HandleFunc("/api/rooms/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if len(path) > 11 && path[len(path)-5:] == "/join" {
-			roomHandler.JoinRoom(w, r)
-		} else if len(path) > 12 && path[len(path)-6:] == "/leave" {
-			roomHandler.LeaveRoom(w, r)
-		} else if len(path) > 14 && path[len(path)-9:] == "/messages" {
-			switch r.Method {
-			case http.MethodGet:
-				messageHandler.GetRoomMessages(w, r)
-			case http.MethodPost:
-				messageHandler.SendRoomMessage(w, r)
-			default:
-				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			}
-		} else if len(path) > 18 && path[len(path)-14:] == "/messages/read" {
-			messageHandler.MarkRoomMessagesAsRead(w, r)
-		} else if len(path) > 20 && path[len(path)-16:] == "/messages/unread" {
-			messageHandler.GetUnreadRoomMessagesCount(w, r)
-		} else {
-			roomHandler.GetRoom(w, r)
-		}
-	})
-
-	// Message edit/delete routes
-	protectedMux.HandleFunc("/api/messages/", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPut, http.MethodPatch:
-			messageHandler.EditRoomMessage(w, r)
-		case http.MethodDelete:
-			messageHandler.DeleteRoomMessage(w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
 
 	// Direct messages routes
 	protectedMux.HandleFunc("/api/dm/unread", messageHandler.GetUnreadDirectMessagesCount)
@@ -167,6 +119,10 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	// Mark DM messages as read: POST /api/dm/read/{userID}
+	protectedMux.HandleFunc("/api/dm/read/", messageHandler.MarkDirectMessagesRead)
+	// Clear DM chat: DELETE /api/dm/clear/{userID}
+	protectedMux.HandleFunc("/api/dm/clear/", messageHandler.ClearDirectMessageChat)
 	protectedMux.HandleFunc("/api/dm/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -178,7 +134,7 @@ func main() {
 		}
 	})
 
-	// Combined chat list routes (both DM and rooms)
+	// Chat list routes (DM chats)
 	protectedMux.HandleFunc("/api/chats", messageHandler.GetChatList)
 	protectedMux.HandleFunc("/api/chats/", messageHandler.GetChat)
 
@@ -217,9 +173,6 @@ func main() {
 	mux.Handle("/api/users", authMiddleware(protectedMux))
 	mux.Handle("/api/users/", authMiddleware(protectedMux))
 	mux.Handle("/api/me", authMiddleware(protectedMux))
-	mux.Handle("/api/rooms", authMiddleware(protectedMux))
-	mux.Handle("/api/rooms/", authMiddleware(protectedMux))
-	mux.Handle("/api/messages/", authMiddleware(protectedMux))
 	mux.Handle("/api/chats", authMiddleware(protectedMux))
 	mux.Handle("/api/chats/", authMiddleware(protectedMux))
 	mux.Handle("/api/dm/", authMiddleware(protectedMux))

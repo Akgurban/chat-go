@@ -11,27 +11,16 @@ type Hub struct {
 	// Clients mapped by user ID for direct messaging
 	userClients map[int]*Client
 
-	// Clients mapped by room ID
-	roomClients map[int]map[*Client]bool
-
 	// Register requests from clients
 	register chan *Client
 
 	// Unregister requests from clients
 	unregister chan *Client
 
-	// Broadcast messages to a room
-	broadcast chan *BroadcastMessage
-
 	// Direct message to a specific user
 	directMessage chan *DirectMessagePayload
 
 	mu sync.RWMutex
-}
-
-type BroadcastMessage struct {
-	RoomID  int
-	Message []byte
 }
 
 type DirectMessagePayload struct {
@@ -43,10 +32,8 @@ func NewHub() *Hub {
 	return &Hub{
 		clients:       make(map[*Client]bool),
 		userClients:   make(map[int]*Client),
-		roomClients:   make(map[int]map[*Client]bool),
 		register:      make(chan *Client),
 		unregister:    make(chan *Client),
-		broadcast:     make(chan *BroadcastMessage),
 		directMessage: make(chan *DirectMessagePayload),
 	}
 }
@@ -65,33 +52,9 @@ func (h *Hub) Run() {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				delete(h.userClients, client.UserID)
-
-				// Remove from all rooms
-				for roomID, clients := range h.roomClients {
-					delete(clients, client)
-					if len(clients) == 0 {
-						delete(h.roomClients, roomID)
-					}
-				}
-
 				close(client.send)
 			}
 			h.mu.Unlock()
-
-		case message := <-h.broadcast:
-			h.mu.RLock()
-			if clients, ok := h.roomClients[message.RoomID]; ok {
-				for client := range clients {
-					select {
-					case client.send <- message.Message:
-					default:
-						close(client.send)
-						delete(h.clients, client)
-						delete(clients, client)
-					}
-				}
-			}
-			h.mu.RUnlock()
 
 		case dm := <-h.directMessage:
 			h.mu.RLock()
@@ -104,37 +67,6 @@ func (h *Hub) Run() {
 			}
 			h.mu.RUnlock()
 		}
-	}
-}
-
-func (h *Hub) JoinRoom(client *Client, roomID int) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if _, ok := h.roomClients[roomID]; !ok {
-		h.roomClients[roomID] = make(map[*Client]bool)
-	}
-	h.roomClients[roomID][client] = true
-	client.Rooms[roomID] = true
-}
-
-func (h *Hub) LeaveRoom(client *Client, roomID int) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if clients, ok := h.roomClients[roomID]; ok {
-		delete(clients, client)
-		if len(clients) == 0 {
-			delete(h.roomClients, roomID)
-		}
-	}
-	delete(client.Rooms, roomID)
-}
-
-func (h *Hub) BroadcastToRoom(roomID int, message []byte) {
-	h.broadcast <- &BroadcastMessage{
-		RoomID:  roomID,
-		Message: message,
 	}
 }
 
@@ -178,20 +110,6 @@ func (h *Hub) GetOnlineUsers() []int {
 	userIDs := make([]int, 0, len(h.userClients))
 	for userID := range h.userClients {
 		userIDs = append(userIDs, userID)
-	}
-	return userIDs
-}
-
-// GetRoomMembers returns online users in a specific room
-func (h *Hub) GetRoomOnlineMembers(roomID int) []int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	var userIDs []int
-	if clients, ok := h.roomClients[roomID]; ok {
-		for client := range clients {
-			userIDs = append(userIDs, client.UserID)
-		}
 	}
 	return userIDs
 }

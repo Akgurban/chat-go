@@ -220,7 +220,7 @@ func (r *NotificationRepository) DeleteAllPushSubscriptions(userID int) error {
 func (r *NotificationRepository) GetPreferences(userID int) (*models.NotificationPreferences, error) {
 	query := `
 		SELECT id, user_id, email_notifications, push_notifications, direct_message_notify,
-		       mention_notify, room_message_notify, mute_all, quiet_hours_enabled,
+		       mention_notify, mute_all, quiet_hours_enabled,
 		       quiet_hours_start, quiet_hours_end, created_at, updated_at
 		FROM notification_preferences
 		WHERE user_id = $1`
@@ -235,7 +235,6 @@ func (r *NotificationRepository) GetPreferences(userID int) (*models.Notificatio
 		&prefs.PushNotifications,
 		&prefs.DirectMessageNotify,
 		&prefs.MentionNotify,
-		&prefs.RoomMessageNotify,
 		&prefs.MuteAll,
 		&prefs.QuietHoursEnabled,
 		&quietStart,
@@ -267,7 +266,7 @@ func (r *NotificationRepository) CreateDefaultPreferences(userID int) (*models.N
 		INSERT INTO notification_preferences (user_id)
 		VALUES ($1)
 		RETURNING id, user_id, email_notifications, push_notifications, direct_message_notify,
-		          mention_notify, room_message_notify, mute_all, quiet_hours_enabled,
+		          mention_notify, mute_all, quiet_hours_enabled,
 		          quiet_hours_start, quiet_hours_end, created_at, updated_at`
 
 	var prefs models.NotificationPreferences
@@ -280,7 +279,6 @@ func (r *NotificationRepository) CreateDefaultPreferences(userID int) (*models.N
 		&prefs.PushNotifications,
 		&prefs.DirectMessageNotify,
 		&prefs.MentionNotify,
-		&prefs.RoomMessageNotify,
 		&prefs.MuteAll,
 		&prefs.QuietHoursEnabled,
 		&quietStart,
@@ -328,11 +326,6 @@ func (r *NotificationRepository) UpdatePreferences(userID int, req *models.Notif
 		args = append(args, *req.MentionNotify)
 		argIndex++
 	}
-	if req.RoomMessageNotify != nil {
-		query += fmt.Sprintf(", room_message_notify = $%d", argIndex)
-		args = append(args, *req.RoomMessageNotify)
-		argIndex++
-	}
 	if req.MuteAll != nil {
 		query += fmt.Sprintf(", mute_all = $%d", argIndex)
 		args = append(args, *req.MuteAll)
@@ -370,9 +363,7 @@ func (r *NotificationRepository) UpdatePreferences(userID int, req *models.Notif
 // ============================================
 
 func (r *NotificationRepository) GetUnreadCounts(userID int) (*models.UnreadCount, error) {
-	counts := &models.UnreadCount{
-		RoomUnread: make(map[int]int),
-	}
+	counts := &models.UnreadCount{}
 
 	// Get notification unread count
 	notifQuery := `SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false`
@@ -382,31 +373,8 @@ func (r *NotificationRepository) GetUnreadCounts(userID int) (*models.UnreadCoun
 	dmQuery := `SELECT COUNT(*) FROM direct_messages WHERE receiver_id = $1 AND is_read = false`
 	r.db.QueryRow(dmQuery, userID).Scan(&counts.DirectMessageUnread)
 
-	// Get room message unread counts
-	roomQuery := `
-		SELECT m.room_id, COUNT(*)
-		FROM messages m
-		JOIN room_members rm ON m.room_id = rm.room_id AND rm.user_id = $1
-		LEFT JOIN message_read_status mrs ON m.id = mrs.message_id AND mrs.user_id = $1
-		WHERE mrs.id IS NULL AND m.sender_id != $1
-		GROUP BY m.room_id`
-
-	rows, err := r.db.Query(roomQuery, userID)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var roomID, count int
-			if err := rows.Scan(&roomID, &count); err == nil {
-				counts.RoomUnread[roomID] = count
-			}
-		}
-	}
-
 	// Calculate total
 	counts.TotalUnread = counts.NotificationUnread + counts.DirectMessageUnread
-	for _, count := range counts.RoomUnread {
-		counts.TotalUnread += count
-	}
 
 	return counts, nil
 }
