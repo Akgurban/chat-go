@@ -98,5 +98,5 @@ func (h *WebSocketHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	// Start client goroutines
 	go client.WritePump()
-	go client.ReadPump(h.messageRepo)
+	go client.ReadPump(h.messageRepo, h.userRepo, h.cache)
 }

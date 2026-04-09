@@ -1,10 +1,12 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"time"
 
+	"chat-go/internal/cache"
 	"chat-go/internal/models"
 	"chat-go/internal/repository"
 
@@ -78,10 +80,24 @@ type DeleteMessagePayload struct {
 	RoomID    int `json:"room_id,omitempty"`
 }
 
-func (c *Client) ReadPump(messageRepo *repository.MessageRepository) {
+func (c *Client) ReadPump(messageRepo *repository.MessageRepository, userRepo *repository.UserRepository, appCache *cache.Cache) {
 	defer func() {
 		c.Hub.unregister <- c
 		c.Conn.Close()
+
+		if userRepo != nil {
+			userRepo.UpdateStatus(c.UserID, "offline")
+		}
+
+		log.Printf("User %d disconnected", c.UserID)
+
+		if appCache != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := appCache.Presence.SetOffline(ctx, c.UserID); err != nil {
+				log.Printf("Failed to set user offline in Redis: %v", err)
+			}
+		}
 	}()
 
 	c.Conn.SetReadLimit(maxMessageSize)
