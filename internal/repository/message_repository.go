@@ -293,6 +293,7 @@ func (r *MessageRepository) getDirectMessageChats(userID int, includeMessages bo
 			u.username,
 			u.avatar_url,
 			u.status,
+			u.last_seen_at,
 			COALESCE((
 				SELECT COUNT(*)
 				FROM direct_messages dm
@@ -361,6 +362,7 @@ func (r *MessageRepository) getDirectMessageChats(userID int, includeMessages bo
 		var chat models.ChatListItem
 		var avatarURL sql.NullString
 		var status sql.NullString
+		var lastSeenAt sql.NullTime
 		var lastMsgID, lastMsgSenderID sql.NullInt64
 		var lastMsgContent, lastMsgType sql.NullString
 		var lastMsgIsRead sql.NullBool
@@ -371,6 +373,7 @@ func (r *MessageRepository) getDirectMessageChats(userID int, includeMessages bo
 			&chat.Name,
 			&avatarURL,
 			&status,
+			&lastSeenAt,
 			&chat.UnreadCount,
 			&lastMsgID,
 			&lastMsgContent,
@@ -389,6 +392,9 @@ func (r *MessageRepository) getDirectMessageChats(userID int, includeMessages bo
 			chat.Avatar = &avatarURL.String
 		}
 		chat.IsOnline = status.Valid && status.String == "online"
+		if lastSeenAt.Valid {
+			chat.LastSeenAt = &lastSeenAt.Time
+		}
 
 		// Set last message if exists
 		if lastMsgID.Valid {
@@ -436,6 +442,7 @@ func (r *MessageRepository) getDirectChatWithMessages(userID, otherUserID, messa
 			u.username,
 			u.avatar_url,
 			u.status,
+			u.last_seen_at,
 			u.created_at,
 			COALESCE((
 				SELECT COUNT(*)
@@ -449,12 +456,14 @@ func (r *MessageRepository) getDirectChatWithMessages(userID, otherUserID, messa
 
 	var chat models.ChatListItem
 	var avatarURL, status sql.NullString
+	var lastSeenAt sql.NullTime
 
 	err := r.db.QueryRow(query, userID, otherUserID).Scan(
 		&chat.ID,
 		&chat.Name,
 		&avatarURL,
 		&status,
+		&lastSeenAt,
 		&chat.CreatedAt,
 		&chat.UnreadCount,
 	)
@@ -467,6 +476,9 @@ func (r *MessageRepository) getDirectChatWithMessages(userID, otherUserID, messa
 		chat.Avatar = &avatarURL.String
 	}
 	chat.IsOnline = status.Valid && status.String == "online"
+	if lastSeenAt.Valid {
+		chat.LastSeenAt = &lastSeenAt.Time
+	}
 
 	// Get recent messages
 	if messageLimit > 0 {

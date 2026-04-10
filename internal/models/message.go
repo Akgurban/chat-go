@@ -48,6 +48,7 @@ type ChatListItem struct {
 	LastMessageAt  *time.Time       `json:"last_message_at,omitempty"` // For sorting
 	RecentMessages []interface{}    `json:"recent_messages,omitempty"` // Last messages
 	IsOnline       bool             `json:"is_online,omitempty"`       // User online status
+	LastSeenAt     *time.Time       `json:"last_seen_at,omitempty"`    // When user was last online
 	CreatedAt      time.Time        `json:"created_at"`
 }
 

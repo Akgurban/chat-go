@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -86,6 +87,18 @@ func (h *WebSocketHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	// Update user status to online in database
 	h.userRepo.UpdateStatus(claims.UserID, "online")
+
+	// Broadcast user_online to all clients
+	onlineMsg := map[string]interface{}{
+		"type": "user_online",
+		"payload": map[string]interface{}{
+			"user_id":  claims.UserID,
+			"username": claims.Username,
+		},
+	}
+	if data, err := json.Marshal(onlineMsg); err == nil {
+		h.hub.BroadcastAll(data)
+	}
 
 	// Set user online in Redis cache (for cross-server presence)
 	if h.cache != nil {

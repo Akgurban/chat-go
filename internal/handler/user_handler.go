@@ -32,12 +32,13 @@ func (h *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	var userResponses []map[string]interface{}
 	for _, u := range users {
 		userResponses = append(userResponses, map[string]interface{}{
-			"id":         u.ID,
-			"username":   u.Username,
-			"email":      u.Email,
-			"avatar_url": u.AvatarURL,
-			"status":     u.Status,
-			"created_at": u.CreatedAt,
+			"id":           u.ID,
+			"username":     u.Username,
+			"email":        u.Email,
+			"avatar_url":   u.AvatarURL,
+			"status":       u.Status,
+			"last_seen_at": u.LastSeenAt,
+			"created_at":   u.CreatedAt,
 		})
 	}
 
@@ -134,12 +135,13 @@ func (h *UserHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 	var userResponses []map[string]interface{}
 	for _, u := range users {
 		userResponses = append(userResponses, map[string]interface{}{
-			"id":         u.ID,
-			"username":   u.Username,
-			"email":      u.Email,
-			"avatar_url": u.AvatarURL,
-			"status":     u.Status,
-			"created_at": u.CreatedAt,
+			"id":           u.ID,
+			"username":     u.Username,
+			"email":        u.Email,
+			"avatar_url":   u.AvatarURL,
+			"status":       u.Status,
+			"last_seen_at": u.LastSeenAt,
+			"created_at":   u.CreatedAt,
 		})
 	}
 

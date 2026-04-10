@@ -72,6 +72,20 @@ func (c *Client) ReadPump(messageRepo *repository.MessageRepository, userRepo *r
 			userRepo.UpdateStatus(c.UserID, "offline")
 		}
 
+		// Broadcast user_offline with last_seen_at to all clients
+		now := time.Now()
+		offlineMsg := models.WSMessage{
+			Type: "user_offline",
+			Payload: map[string]interface{}{
+				"user_id":      c.UserID,
+				"username":     c.Username,
+				"last_seen_at": now,
+			},
+		}
+		if data, err := json.Marshal(offlineMsg); err == nil {
+			c.Hub.BroadcastAll(data)
+		}
+
 		log.Printf("User %d disconnected", c.UserID)
 
 		if appCache != nil {
