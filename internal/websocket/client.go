@@ -153,12 +153,25 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 				"sender_username": c.Username,
 				"content":         dm.Content,
 				"created_at":      dm.CreatedAt,
+				"delivered_at":    dm.DeliveredAt,
+				"is_read":         false,
 			},
 		}
 		data, _ := json.Marshal(dmMsg)
 		c.Hub.SendDirectMessage(payload.ReceiverID, data)
 
-		// Send same message back to sender so it appears in their chat
+		// Send delivery confirmation to sender (single tick)
+		deliveryConfirm := models.WSMessage{
+			Type: "message_delivered",
+			Payload: map[string]interface{}{
+				"message_id":   dm.ID,
+				"delivered_at": dm.DeliveredAt,
+			},
+		}
+		confirmData, _ := json.Marshal(deliveryConfirm)
+		c.send <- confirmData
+
+		// Also send same message back to sender so it appears in their chat
 		c.send <- data
 
 	case "edit_direct_message":
@@ -232,13 +245,14 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			// Mark direct messages as read
 			messageRepo.MarkDirectMessagesAsRead(payload.SenderID, c.UserID)
 
-			// Notify sender that messages were read
+			// Notify sender that messages were read (double tick)
 			readReceipt := models.WSMessage{
 				Type: "messages_read",
 				Payload: map[string]interface{}{
 					"reader_id":       c.UserID,
 					"reader_username": c.Username,
 					"sender_id":       payload.SenderID,
+					"read_at":         time.Now().UTC(),
 				},
 			}
 			data, _ := json.Marshal(readReceipt)
