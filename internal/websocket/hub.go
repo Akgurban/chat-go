@@ -113,3 +113,17 @@ func (h *Hub) GetOnlineUsers() []int {
 	}
 	return userIDs
 }
+
+// BroadcastAll sends a message to all connected clients
+func (h *Hub) BroadcastAll(message []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for client := range h.clients {
+		select {
+		case client.send <- message:
+		default:
+			// Client buffer full, skip
+		}
+	}
+}

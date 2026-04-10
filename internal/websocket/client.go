@@ -1,10 +1,12 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"time"
 
+	"chat-go/internal/cache"
 	"chat-go/internal/models"
 	"chat-go/internal/repository"
 
@@ -61,10 +63,38 @@ type MarkReadPayload struct {
 	SenderID int `json:"sender_id"` // For DMs - who sent the messages
 }
 
-func (c *Client) ReadPump(messageRepo *repository.MessageRepository) {
+func (c *Client) ReadPump(messageRepo *repository.MessageRepository, userRepo *repository.UserRepository, appCache *cache.Cache) {
 	defer func() {
 		c.Hub.unregister <- c
 		c.Conn.Close()
+
+		if userRepo != nil {
+			userRepo.UpdateStatus(c.UserID, "offline")
+		}
+
+		// Broadcast user_offline with last_seen_at to all clients
+		now := time.Now()
+		offlineMsg := models.WSMessage{
+			Type: "user_offline",
+			Payload: map[string]interface{}{
+				"user_id":      c.UserID,
+				"username":     c.Username,
+				"last_seen_at": now,
+			},
+		}
+		if data, err := json.Marshal(offlineMsg); err == nil {
+			c.Hub.BroadcastAll(data)
+		}
+
+		log.Printf("User %d disconnected", c.UserID)
+
+		if appCache != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := appCache.Presence.SetOffline(ctx, c.UserID); err != nil {
+				log.Printf("Failed to set user offline in Redis: %v", err)
+			}
+		}
 	}()
 
 	c.Conn.SetReadLimit(maxMessageSize)
