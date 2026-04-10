@@ -18,9 +18,9 @@ func NewMessageRepository(db *sql.DB) *MessageRepository {
 // Direct messages
 func (r *MessageRepository) CreateDirectMessage(msg *models.DirectMessage) error {
 	query := `
-		INSERT INTO direct_messages (sender_id, receiver_id, content, message_type)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at`
+		INSERT INTO direct_messages (sender_id, receiver_id, content, message_type, delivered_at)
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+		RETURNING id, created_at, delivered_at`
 
 	messageType := msg.MessageType
 	if messageType == "" {
@@ -33,12 +33,12 @@ func (r *MessageRepository) CreateDirectMessage(msg *models.DirectMessage) error
 		msg.ReceiverID,
 		msg.Content,
 		messageType,
-	).Scan(&msg.ID, &msg.CreatedAt)
+	).Scan(&msg.ID, &msg.CreatedAt, &msg.DeliveredAt)
 }
 
 func (r *MessageRepository) GetDirectMessages(userID1, userID2 int, limit, offset int) ([]models.DirectMessageWithUsers, error) {
 	query := `
-		SELECT dm.id, dm.sender_id, dm.receiver_id, dm.content, dm.message_type, dm.is_read, dm.created_at,
+		SELECT dm.id, dm.sender_id, dm.receiver_id, dm.content, dm.message_type, dm.is_read, dm.created_at, dm.delivered_at, dm.read_at,
 			   COALESCE(s.username, 'Deleted User') as sender_username,
 			   COALESCE(r.username, 'Deleted User') as receiver_username
 		FROM direct_messages dm
@@ -68,6 +68,8 @@ func (r *MessageRepository) GetDirectMessages(userID1, userID2 int, limit, offse
 			&msg.MessageType,
 			&msg.IsRead,
 			&msg.CreatedAt,
+			&msg.DeliveredAt,
+			&msg.ReadAt,
 			&msg.SenderUsername,
 			&msg.ReceiverUsername,
 		)
@@ -88,7 +90,7 @@ func (r *MessageRepository) GetDirectMessages(userID1, userID2 int, limit, offse
 // GetDirectMessagesFiltered returns direct messages with optional filters (after message ID, unread only)
 func (r *MessageRepository) GetDirectMessagesFiltered(userID1, userID2 int, limit int, afterID int, unreadOnly bool) ([]models.DirectMessageWithUsers, error) {
 	query := `
-		SELECT dm.id, dm.sender_id, dm.receiver_id, dm.content, dm.message_type, dm.is_read, dm.created_at,
+		SELECT dm.id, dm.sender_id, dm.receiver_id, dm.content, dm.message_type, dm.is_read, dm.created_at, dm.delivered_at, dm.read_at,
 			   COALESCE(s.username, 'Deleted User') as sender_username,
 			   COALESCE(r.username, 'Deleted User') as receiver_username
 		FROM direct_messages dm
@@ -136,6 +138,8 @@ func (r *MessageRepository) GetDirectMessagesFiltered(userID1, userID2 int, limi
 			&msg.MessageType,
 			&msg.IsRead,
 			&msg.CreatedAt,
+			&msg.DeliveredAt,
+			&msg.ReadAt,
 			&msg.SenderUsername,
 			&msg.ReceiverUsername,
 		)

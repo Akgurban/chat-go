@@ -13,7 +13,8 @@ type DirectMessage struct {
 	EditedAt    *time.Time `json:"edited_at,omitempty"`
 	IsDeleted   bool       `json:"is_deleted"`
 	CreatedAt   time.Time  `json:"created_at"`
-	ReadAt      *time.Time `json:"read_at,omitempty"`
+	DeliveredAt *time.Time `json:"delivered_at,omitempty"` // Single tick - message delivered to server
+	ReadAt      *time.Time `json:"read_at,omitempty"`      // Double tick - message read by recipient
 }
 
 type SendMessageRequest struct {
