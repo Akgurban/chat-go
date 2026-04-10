@@ -87,6 +87,21 @@ func (r *MessageRepository) GetDirectMessages(userID1, userID2 int, limit, offse
 	return messages, nil
 }
 
+// GetDirectMessagesCount returns the total count of messages between two users
+func (r *MessageRepository) GetDirectMessagesCount(userID1, userID2 int) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM direct_messages dm
+		LEFT JOIN chat_cleared cc ON cc.user_id = $1 AND cc.other_user_id = $2
+		WHERE ((dm.sender_id = $1 AND dm.receiver_id = $2)
+		   OR (dm.sender_id = $2 AND dm.receiver_id = $1))
+		   AND (cc.cleared_at IS NULL OR dm.created_at > cc.cleared_at)`
+
+	var count int
+	err := r.db.QueryRow(query, userID1, userID2).Scan(&count)
+	return count, err
+}
+
 // GetDirectMessagesFiltered returns direct messages with optional filters (after message ID, unread only)
 func (r *MessageRepository) GetDirectMessagesFiltered(userID1, userID2 int, limit int, afterID int, unreadOnly bool) ([]models.DirectMessageWithUsers, error) {
 	query := `

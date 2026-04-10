@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strconv"
 	"time"
 
 	"chat-go/internal/cache"
@@ -43,24 +44,47 @@ type IncomingMessage struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// FlexInt handles both string and int JSON values
+type FlexInt int
+
+func (fi *FlexInt) UnmarshalJSON(b []byte) error {
+	// Try to unmarshal as int first
+	var i int
+	if err := json.Unmarshal(b, &i); err == nil {
+		*fi = FlexInt(i)
+		return nil
+	}
+	// Try to unmarshal as string
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := strconv.Atoi(s)
+	if err != nil {
+		return err
+	}
+	*fi = FlexInt(parsed)
+	return nil
+}
+
 type DirectMessagePayloadIncoming struct {
-	ReceiverID int    `json:"receiver_id"`
-	Content    string `json:"content"`
+	ReceiverID FlexInt `json:"receiver_id"`
+	Content    string  `json:"content"`
 }
 
 type EditDirectMessagePayload struct {
-	MessageID  int    `json:"message_id"`
-	ReceiverID int    `json:"receiver_id"`
-	Content    string `json:"content"`
+	MessageID  FlexInt `json:"message_id"`
+	ReceiverID FlexInt `json:"receiver_id"`
+	Content    string  `json:"content"`
 }
 
 type DeleteDirectMessagePayload struct {
-	MessageID  int `json:"message_id"`
-	ReceiverID int `json:"receiver_id"`
+	MessageID  FlexInt `json:"message_id"`
+	ReceiverID FlexInt `json:"receiver_id"`
 }
 
 type MarkReadPayload struct {
-	SenderID int `json:"sender_id"` // For DMs - who sent the messages
+	SenderID FlexInt `json:"sender_id"` // For DMs - who sent the messages
 }
 
 func (c *Client) ReadPump(messageRepo *repository.MessageRepository, userRepo *repository.UserRepository, appCache *cache.Cache) {
@@ -128,13 +152,16 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 	case "direct_message":
 		var payload DirectMessagePayloadIncoming
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			log.Printf("Failed to unmarshal direct_message payload: %v", err)
 			return
 		}
+
+		receiverID := int(payload.ReceiverID)
 
 		// Save direct message to database
 		dm := &models.DirectMessage{
 			SenderID:    &c.UserID,
-			ReceiverID:  &payload.ReceiverID,
+			ReceiverID:  &receiverID,
 			Content:     payload.Content,
 			MessageType: "text",
 		}
@@ -149,7 +176,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			Payload: map[string]interface{}{
 				"id":              dm.ID,
 				"sender_id":       c.UserID,
-				"receiver_id":     payload.ReceiverID,
+				"receiver_id":     receiverID,
 				"sender_username": c.Username,
 				"content":         dm.Content,
 				"created_at":      dm.CreatedAt,
@@ -158,7 +185,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			},
 		}
 		data, _ := json.Marshal(dmMsg)
-		c.Hub.SendDirectMessage(payload.ReceiverID, data)
+		c.Hub.SendDirectMessage(receiverID, data)
 
 		// Send delivery confirmation to sender (single tick)
 		deliveryConfirm := models.WSMessage{
@@ -180,8 +207,11 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			return
 		}
 
+		messageID := int(payload.MessageID)
+		receiverID := int(payload.ReceiverID)
+
 		// Edit message in database
-		editedMsg, err := messageRepo.EditDirectMessage(payload.MessageID, c.UserID, payload.Content)
+		editedMsg, err := messageRepo.EditDirectMessage(messageID, c.UserID, payload.Content)
 		if err != nil {
 			log.Printf("Failed to edit direct message: %v", err)
 			return
@@ -193,7 +223,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			Payload: map[string]interface{}{
 				"message_id":      editedMsg.ID,
 				"sender_id":       c.UserID,
-				"receiver_id":     payload.ReceiverID,
+				"receiver_id":     receiverID,
 				"content":         editedMsg.Content,
 				"edited_at":       editedMsg.EditedAt,
 				"edited_by":       c.UserID,
@@ -201,7 +231,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			},
 		}
 		data, _ := json.Marshal(editNotif)
-		c.Hub.SendDirectMessage(payload.ReceiverID, data)
+		c.Hub.SendDirectMessage(receiverID, data)
 
 		// Send same notification back to sender
 		c.send <- data
@@ -212,8 +242,11 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			return
 		}
 
+		messageID := int(payload.MessageID)
+		receiverID := int(payload.ReceiverID)
+
 		// Delete message in database
-		if err := messageRepo.DeleteDirectMessage(payload.MessageID, c.UserID); err != nil {
+		if err := messageRepo.DeleteDirectMessage(messageID, c.UserID); err != nil {
 			log.Printf("Failed to delete direct message: %v", err)
 			return
 		}
@@ -222,15 +255,15 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 		deleteNotif := models.WSMessage{
 			Type: "direct_message_deleted",
 			Payload: map[string]interface{}{
-				"message_id":       payload.MessageID,
+				"message_id":       messageID,
 				"sender_id":        c.UserID,
-				"receiver_id":      payload.ReceiverID,
+				"receiver_id":      receiverID,
 				"deleted_by":       c.UserID,
 				"deleter_username": c.Username,
 			},
 		}
 		data, _ := json.Marshal(deleteNotif)
-		c.Hub.SendDirectMessage(payload.ReceiverID, data)
+		c.Hub.SendDirectMessage(receiverID, data)
 
 		// Send same notification back to sender
 		c.send <- data
@@ -241,9 +274,11 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			return
 		}
 
-		if payload.SenderID > 0 {
+		senderID := int(payload.SenderID)
+
+		if senderID > 0 {
 			// Mark direct messages as read
-			messageRepo.MarkDirectMessagesAsRead(payload.SenderID, c.UserID)
+			messageRepo.MarkDirectMessagesAsRead(senderID, c.UserID)
 
 			// Notify sender that messages were read (double tick)
 			readReceipt := models.WSMessage{
@@ -251,12 +286,12 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 				Payload: map[string]interface{}{
 					"reader_id":       c.UserID,
 					"reader_username": c.Username,
-					"sender_id":       payload.SenderID,
+					"sender_id":       senderID,
 					"read_at":         time.Now().UTC(),
 				},
 			}
 			data, _ := json.Marshal(readReceipt)
-			c.Hub.SendDirectMessage(payload.SenderID, data)
+			c.Hub.SendDirectMessage(senderID, data)
 		}
 
 	case "typing_dm":
@@ -264,6 +299,8 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			return
 		}
+
+		receiverID := int(payload.ReceiverID)
 
 		typingMsg := models.WSMessage{
 			Type: "user_typing_dm",
@@ -273,7 +310,7 @@ func (c *Client) handleMessage(msg IncomingMessage, messageRepo *repository.Mess
 			},
 		}
 		data, _ := json.Marshal(typingMsg)
-		c.Hub.SendDirectMessage(payload.ReceiverID, data)
+		c.Hub.SendDirectMessage(receiverID, data)
 	}
 }
 

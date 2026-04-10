@@ -69,3 +69,13 @@ type ChatListResponse struct {
 	Chats       []ChatListItem `json:"chats"`
 	TotalUnread int            `json:"total_unread"`
 }
+
+// PaginatedMessagesResponse is the response for paginated direct messages
+type PaginatedMessagesResponse struct {
+	Messages    []DirectMessageWithUsers `json:"messages"`
+	CurrentPage int                      `json:"current_page"`
+	TotalPages  int                      `json:"total_pages"`
+	TotalCount  int                      `json:"total_count"`
+	Limit       int                      `json:"limit"`
+	HasMore     bool                     `json:"has_more"`
+}

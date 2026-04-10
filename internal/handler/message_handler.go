@@ -52,6 +52,15 @@ func (h *MessageHandler) GetDirectMessages(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Calculate offset from page number (1-indexed)
+	page := 1
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	offset := (page - 1) * limit
+
 	// Check for 'after' parameter (get messages after this ID)
 	afterID := 0
 	if a := r.URL.Query().Get("after"); a != "" {
@@ -69,13 +78,7 @@ func (h *MessageHandler) GetDirectMessages(w http.ResponseWriter, r *http.Reques
 	if afterID > 0 || unreadOnly {
 		messages, err = h.messageRepo.GetDirectMessagesFiltered(userID, otherUserID, limit, afterID, unreadOnly)
 	} else {
-		// Use standard pagination query
-		offset := 0
-		if o := r.URL.Query().Get("offset"); o != "" {
-			if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-				offset = parsed
-			}
-		}
+		// Use standard pagination query (ordered by created_at DESC)
 		messages, err = h.messageRepo.GetDirectMessages(userID, otherUserID, limit, offset)
 	}
 
@@ -88,7 +91,32 @@ func (h *MessageHandler) GetDirectMessages(w http.ResponseWriter, r *http.Reques
 		messages = []models.DirectMessageWithUsers{}
 	}
 
-	respondWithJSON(w, http.StatusOK, messages)
+	// Get total count for pagination info
+	totalCount, err := h.messageRepo.GetDirectMessagesCount(userID, otherUserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to get message count")
+		return
+	}
+
+	// Calculate total pages
+	totalPages := totalCount / limit
+	if totalCount%limit > 0 {
+		totalPages++
+	}
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	response := models.PaginatedMessagesResponse{
+		Messages:    messages,
+		CurrentPage: page,
+		TotalPages:  totalPages,
+		TotalCount:  totalCount,
+		Limit:       limit,
+		HasMore:     page < totalPages,
+	}
+
+	respondWithJSON(w, http.StatusOK, response)
 }
 
 // MarkDirectMessagesRead marks all direct messages from a user as read
